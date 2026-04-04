@@ -75,22 +75,28 @@ BACKEND_OPTIONS = {
 
 
 def _create_backend(config: dict) -> TranscriptionBackend:
-    """Create a transcription backend instance from config."""
+    """Create a transcription backend instance from config.
+
+    Uses BACKEND_OPTIONS as the single source of truth for backend ID
+    to class mapping. Falls through to custom endpoint handling for
+    custom_ prefixed IDs.
+    """
     backend_id = config.get("backend")
+    if not backend_id:
+        return None
+
     api_keys = config.get("api_keys", {})
 
-    if backend_id == "openai":
-        return OpenAIWhisperBackend(api_key=api_keys.get("openai", ""))
-    elif backend_id == "groq":
-        return GroqWhisperBackend(api_key=api_keys.get("groq", ""))
-    elif backend_id == "mistral":
-        return MistralTranscriptionBackend(api_key=api_keys.get("mistral", ""))
-    elif backend_id == "whisper_local":
-        return WhisperLocalBackend(
-            model_size=config.get("whisper_model_size", "base"),
-        )
-    elif backend_id and backend_id.startswith("custom_"):
-        idx = int(backend_id.split("_")[1])
+    # Look up in the registry
+    if backend_id in BACKEND_OPTIONS:
+        _, cls = BACKEND_OPTIONS[backend_id]
+        if cls.is_local:
+            return cls(model_size=config.get("whisper_model_size", "base"))
+        return cls(api_key=api_keys.get(backend_id, ""))
+
+    # Custom endpoint fallthrough
+    if backend_id.startswith("custom_"):
+        idx = int(backend_id.split("_", 1)[1])
         endpoints = config.get("custom_endpoints", [])
         if idx < len(endpoints):
             return CustomEndpointBackend.from_dict(endpoints[idx])
