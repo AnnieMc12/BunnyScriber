@@ -129,20 +129,17 @@ def write_txt(
                 current_speaker = None
                 continue
 
-            prefix = ""
-            suffix = ""
-
+            crosstalk_tag = ""
             if seg.is_crosstalk and seg.overlap_with:
-                suffix = f" [CROSSTALK with {seg.overlap_with}]"
+                crosstalk_tag = f" [CROSSTALK with {seg.overlap_with}]"
 
-            if seg.is_uncertain:
-                prefix = "[UNIDENTIFIED] "
+            prefix = "[UNIDENTIFIED] " if seg.is_uncertain else ""
 
             if seg.speaker_name != current_speaker:
-                f.write(f"\n[{ts}] {prefix}{seg.speaker_name}:{suffix}\n")
+                f.write(f"\n[{ts}] {prefix}{seg.speaker_name}:\n")
                 current_speaker = seg.speaker_name
 
-            f.write(f"  {seg.text}{suffix if current_speaker == seg.speaker_name and seg.is_crosstalk else ''}\n")
+            f.write(f"  {seg.text}{crosstalk_tag}\n")
 
     return output_path
 
