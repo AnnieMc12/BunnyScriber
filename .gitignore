@@ -1,0 +1,40 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg-info/
+*.egg
+dist/
+build/
+*.manifest
+*.spec.bak
+
+# Virtual environments
+venv/
+.venv/
+env/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Config (contains API keys)
+bunnyscriber_config.json
+
+# Intermediate processing files
+bunnyscriber_work/
+
+# PyInstaller
+*.exe
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Models
+models/
+*.pt
+*.bin
