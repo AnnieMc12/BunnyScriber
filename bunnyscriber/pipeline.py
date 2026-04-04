@@ -23,6 +23,7 @@ from bunnyscriber.separator import separate_chunk, SeparationResult
 from bunnyscriber.transcriber import (
     transcribe_all_tracks,
     save_transcript,
+    load_transcript,
     SpeakerTranscript,
 )
 from bunnyscriber.reassembler import (
@@ -153,7 +154,12 @@ class PipelineWorker(QThread):
         job_dir = os.path.join(work_dir, job_name)
         os.makedirs(job_dir, exist_ok=True)
 
-        state = self.resume_state or {"status": "starting", "job_dir": job_dir}
+        state = self.resume_state or {
+            "status": "starting",
+            "job_dir": job_dir,
+            "audio_path": self.audio_path,
+            "num_speakers": self.num_speakers,
+        }
 
         # ── Phase 1: Chunking ────────────────────────────────────────
         chunks_dir = os.path.join(job_dir, "chunks")
@@ -318,7 +324,18 @@ class PipelineWorker(QThread):
             _save_state(job_dir, state)
             self._emit_log(f"Transcribed {len(all_transcripts)} speaker tracks.")
         else:
-            all_transcripts = []  # Would need to reload from files
+            # Resume: reload saved transcripts from the transcripts directory
+            all_transcripts = []
+            if os.path.isdir(transcript_dir):
+                for fname in sorted(os.listdir(transcript_dir)):
+                    if fname.endswith("_transcript.txt"):
+                        fpath = os.path.join(transcript_dir, fname)
+                        try:
+                            t = load_transcript(fpath)
+                            all_transcripts.append(t)
+                        except Exception as e:
+                            self._emit_log(f"Warning: could not reload {fname}: {e}")
+                self._emit_log(f"Reloaded {len(all_transcripts)} transcripts from disk.")
 
         self._check_cancel()
 
