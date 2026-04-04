@@ -127,6 +127,7 @@ def separate_chunk(
     chunk_index: int = 0,
     confidence_threshold: float = CONFIDENCE_THRESHOLD,
     auth_token: Optional[str] = None,
+    allow_fallback_diarization: bool = False,
     on_progress=None,
 ) -> SeparationResult:
     """Separate speakers in one audio chunk.
@@ -141,22 +142,45 @@ def separate_chunk(
         chunk_index: Index of this chunk (for file naming).
         confidence_threshold: Below this, segments are flagged uncertain.
         auth_token: HuggingFace auth token for pyannote.
+        allow_fallback_diarization: If True, use low-quality energy-based
+            fallback when pyannote is unavailable. Defaults to False.
         on_progress: Optional callback(message, percent).
 
     Returns:
         SeparationResult with speaker tracks and samples.
+
+    Raises:
+        RuntimeError: If pyannote is unavailable and fallback is not allowed.
     """
     os.makedirs(output_dir, exist_ok=True)
 
     if on_progress:
         on_progress("Running speaker diarization...", 0.1)
 
-    # Try pyannote first, fall back to simple method
     try:
         segments = run_diarization(chunk_path, num_speakers, auth_token)
-    except RuntimeError:
+    except RuntimeError as e:
+        if not allow_fallback_diarization:
+            raise RuntimeError(
+                "pyannote.audio is required for speaker separation but is not available.\n\n"
+                "To install it:\n"
+                "  pip install pyannote.audio\n\n"
+                "You also need a HuggingFace account and must accept the model terms at:\n"
+                "  https://huggingface.co/pyannote/speaker-diarization-3.1\n\n"
+                "Then enter your HuggingFace token in Settings > Transcription > HuggingFace Key.\n\n"
+                f"Original error: {e}"
+            )
         if on_progress:
-            on_progress("pyannote unavailable, using fallback diarization...", 0.1)
+            on_progress(
+                "WARNING: pyannote unavailable, using low-quality fallback diarization. "
+                "Output quality will be poor.",
+                0.1,
+            )
+        import logging
+        logging.warning(
+            "Using fallback energy-based diarization. Speaker attribution "
+            "will be unreliable. Install pyannote.audio for proper results."
+        )
         segments = _simple_energy_diarization(chunk_path, num_speakers)
 
     if on_progress:

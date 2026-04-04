@@ -207,6 +207,9 @@ class PipelineWorker(QThread):
                     num_speakers=self.num_speakers,
                     chunk_index=i,
                     auth_token=self.config.get("api_keys", {}).get("huggingface"),
+                    allow_fallback_diarization=self.config.get(
+                        "allow_fallback_diarization", False
+                    ),
                     on_progress=lambda msg, pct: self._emit_log(f"  {msg}"),
                 )
                 separation_results.append(result)
