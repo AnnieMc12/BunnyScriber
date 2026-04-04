@@ -62,7 +62,7 @@ def run_diarization(
 
         pipeline = PyannotePipeline.from_pretrained(
             "pyannote/speaker-diarization-3.1",
-            use_auth_token=auth_token,
+            token=auth_token,
         )
 
         diarization = pipeline(
