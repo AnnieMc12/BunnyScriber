@@ -60,9 +60,16 @@ def run_diarization(
     try:
         from pyannote.audio import Pipeline as PyannotePipeline
 
+        # Log in to HuggingFace Hub before loading the model.
+        # We do this instead of passing a token to from_pretrained()
+        # because pyannote 3.x passes use_auth_token to huggingface_hub,
+        # which was removed in huggingface_hub >=1.0.
+        if auth_token:
+            from huggingface_hub import login
+            login(token=auth_token, add_to_git_credential=False)
+
         pipeline = PyannotePipeline.from_pretrained(
             "pyannote/speaker-diarization-3.1",
-            use_auth_token=auth_token,
         )
 
         diarization = pipeline(
