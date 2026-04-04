@@ -32,4 +32,3 @@ class PipelineSignals(QObject):
     finished = pyqtSignal(str)             # output file path
     cancelled = pyqtSignal()
     speaker_verification_needed = pyqtSignal(object)  # verification data dict
-    speaker_verification_done = pyqtSignal()
