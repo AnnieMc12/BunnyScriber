@@ -238,11 +238,12 @@ def separate_chunk(
         for seg in speaker_segs:
             track += audio[seg.start_ms:seg.end_ms]
 
-        # Save full track
+        # Save full track as MP3 to keep file sizes under API upload
+        # limits (e.g. Mistral 25MB). WAV at 44.1kHz stereo is ~10MB/min.
         track_path = os.path.join(
-            output_dir, f"chunk{chunk_index:03d}_{label}.wav"
+            output_dir, f"chunk{chunk_index:03d}_{label}.mp3"
         )
-        track.export(track_path, format="wav")
+        track.export(track_path, format="mp3")
         speaker_tracks[label] = track_path
 
         # Save a sample clip for verification
