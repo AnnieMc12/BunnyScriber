@@ -132,6 +132,7 @@ DEFAULT_CONFIG = {
     "llm_cleanup_enabled": False,
     "llm_cleanup_backend": None,
     "llm_cleanup_api_key": None,
+    "allow_fallback_diarization": False,
     "auto_delete_intermediates": False,
     "work_dir": None,
     "custom_endpoints": [],

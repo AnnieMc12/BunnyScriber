@@ -75,22 +75,28 @@ BACKEND_OPTIONS = {
 
 
 def _create_backend(config: dict) -> TranscriptionBackend:
-    """Create a transcription backend instance from config."""
+    """Create a transcription backend instance from config.
+
+    Uses BACKEND_OPTIONS as the single source of truth for backend ID
+    to class mapping. Falls through to custom endpoint handling for
+    custom_ prefixed IDs.
+    """
     backend_id = config.get("backend")
+    if not backend_id:
+        return None
+
     api_keys = config.get("api_keys", {})
 
-    if backend_id == "openai":
-        return OpenAIWhisperBackend(api_key=api_keys.get("openai", ""))
-    elif backend_id == "groq":
-        return GroqWhisperBackend(api_key=api_keys.get("groq", ""))
-    elif backend_id == "mistral":
-        return MistralTranscriptionBackend(api_key=api_keys.get("mistral", ""))
-    elif backend_id == "whisper_local":
-        return WhisperLocalBackend(
-            model_size=config.get("whisper_model_size", "base"),
-        )
-    elif backend_id and backend_id.startswith("custom_"):
-        idx = int(backend_id.split("_")[1])
+    # Look up in the registry
+    if backend_id in BACKEND_OPTIONS:
+        _, cls = BACKEND_OPTIONS[backend_id]
+        if cls.is_local:
+            return cls(model_size=config.get("whisper_model_size", "base"))
+        return cls(api_key=api_keys.get(backend_id, ""))
+
+    # Custom endpoint fallthrough
+    if backend_id.startswith("custom_"):
+        idx = int(backend_id.split("_", 1)[1])
         endpoints = config.get("custom_endpoints", [])
         if idx < len(endpoints):
             return CustomEndpointBackend.from_dict(endpoints[idx])
@@ -954,27 +960,42 @@ class BunnyScriberWindow(QMainWindow):
     def _check_resume(self):
         """Check for resumable pipeline state."""
         work_dir = get_work_dir(self.config)
-        # Check all subdirectories for resumable state
-        if os.path.exists(work_dir):
-            for name in os.listdir(work_dir):
-                job_dir = os.path.join(work_dir, name)
-                if os.path.isdir(job_dir):
-                    state = check_resumable(job_dir)
-                    if state:
-                        reply = QMessageBox.question(
-                            self,
-                            "Resume Previous Job?",
-                            f"Found an incomplete transcription job: {name}\n"
-                            f"Status: {state.get('status', 'unknown')}\n\n"
-                            "Would you like to resume it?",
-                        )
-                        if reply == QMessageBox.StandardButton.Yes:
-                            self._log(f"Resuming job: {name}")
-                            # Would need to restore file path and settings
-                        break
+        if not os.path.exists(work_dir):
+            return
+        for name in os.listdir(work_dir):
+            job_dir = os.path.join(work_dir, name)
+            if not os.path.isdir(job_dir):
+                continue
+            state = check_resumable(job_dir)
+            if not state:
+                continue
 
-    def _start_pipeline(self):
-        """Start the transcription pipeline."""
+            reply = QMessageBox.question(
+                self,
+                "Resume Previous Job?",
+                f"Found an incomplete transcription job: {name}\n"
+                f"Status: {state.get('status', 'unknown')}\n\n"
+                "Would you like to resume it?",
+            )
+            if reply == QMessageBox.StandardButton.Yes:
+                # Restore audio path from state
+                audio_path = state.get("audio_path", "")
+                if audio_path and os.path.exists(audio_path):
+                    self.file_input.setText(audio_path)
+
+                num_speakers = state.get("num_speakers", 2)
+                self.speakers_spin.setValue(num_speakers)
+
+                self._log(f"Resuming job: {name}")
+                self._start_pipeline(resume_state=state)
+            break
+
+    def _start_pipeline(self, resume_state=None):
+        """Start the transcription pipeline.
+
+        Args:
+            resume_state: Optional saved state dict for crash recovery.
+        """
         audio_path = self.file_input.text()
         if not audio_path or not os.path.exists(audio_path):
             QMessageBox.warning(self, "No File", "Please select an audio file first.")
@@ -1012,6 +1033,7 @@ class BunnyScriberWindow(QMainWindow):
             backend=backend,
             config=self.config,
             signals=signals,
+            resume_state=resume_state,
         )
         self.worker.start()
 

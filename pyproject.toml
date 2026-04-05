@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "bunnyscriber"
+version = "0.1.0"
+description = "Multi-speaker audio transcriber with accurate speaker attribution"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "PyQt6>=6.5",
+    "pydub>=0.25.1",
+    "audioop-lts>=0.2.1; python_version>='3.13'",
+    "numpy>=1.24",
+    "openai>=1.0",
+    "requests>=2.31",
+    "pyannote.audio>=3.1,<4.0",
+    "torch>=2.0,<2.5",
+    "torchaudio>=2.0,<2.5",
+    "openai-whisper>=20231117",
+    "python-docx>=1.0",
+]
+
+[project.scripts]
+bunnyscriber = "bunnyscriber.app:main"
+
+[tool.setuptools.packages.find]
+include = ["bunnyscriber*"]
+
+[tool.setuptools.package-data]
+bunnyscriber = ["../pics/*.png"]

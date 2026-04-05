@@ -9,7 +9,11 @@ import os
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional
 
-from bunnyscriber.backends.base import TranscriptionBackend, TranscriptResult
+from bunnyscriber.backends.base import (
+    TranscriptionBackend,
+    TranscriptResult,
+    TranscriptSegment,
+)
 
 
 @dataclass
@@ -131,6 +135,69 @@ def save_transcript(transcript: SpeakerTranscript, output_dir: str) -> str:
             f.write(f"[{start_str} - {end_str}] {seg.text}\n")
 
     return path
+
+
+def load_transcript(file_path: str) -> SpeakerTranscript:
+    """Load a saved transcript file back into a SpeakerTranscript.
+
+    Parses the format written by save_transcript().
+
+    Args:
+        file_path: Path to the transcript text file.
+
+    Returns:
+        SpeakerTranscript reconstructed from the file.
+    """
+    import re
+
+    speaker_name = ""
+    speaker_label = ""
+    chunk_index = 0
+    segments = []
+
+    with open(file_path, "r", encoding="utf-8") as f:
+        for line in f:
+            line = line.rstrip("\n")
+            if line.startswith("Speaker: "):
+                speaker_name = line[len("Speaker: "):]
+            elif line.startswith("Label: "):
+                speaker_label = line[len("Label: "):]
+            elif line.startswith("Chunk: "):
+                chunk_index = int(line[len("Chunk: "):])
+            elif line.startswith("["):
+                match = re.match(
+                    r"\[(\d+:\d+:\d+\.\d+)\s*-\s*(\d+:\d+:\d+\.\d+)\]\s*(.*)",
+                    line,
+                )
+                if match:
+                    start = _parse_timestamp(match.group(1))
+                    end = _parse_timestamp(match.group(2))
+                    text = match.group(3)
+                    segments.append(TranscriptSegment(
+                        text=text,
+                        start=start,
+                        end=end,
+                    ))
+
+    return SpeakerTranscript(
+        speaker_label=speaker_label,
+        speaker_name=speaker_name,
+        chunk_index=chunk_index,
+        result=TranscriptResult(
+            segments=segments,
+            full_text=" ".join(s.text for s in segments),
+        ),
+        track_path="",
+    )
+
+
+def _parse_timestamp(ts: str) -> float:
+    """Parse HH:MM:SS.mmm into seconds."""
+    parts = ts.split(":")
+    hours = int(parts[0])
+    minutes = int(parts[1])
+    seconds = float(parts[2])
+    return hours * 3600 + minutes * 60 + seconds
 
 
 def _format_timestamp(seconds: float) -> str:

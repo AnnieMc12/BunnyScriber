@@ -70,20 +70,24 @@ def reassemble_transcripts(
     # Sort by start time
     all_segments.sort(key=lambda s: s.start)
 
-    # Detect crosstalk (overlapping segments from different speakers)
-    for i in range(len(all_segments)):
-        for j in range(i + 1, len(all_segments)):
-            seg_a = all_segments[i]
-            seg_b = all_segments[j]
+    # Detect crosstalk using a sliding window of active segments.
+    # Since segments are sorted by start time, we maintain a window of
+    # segments that haven't ended yet and only compare within that window.
+    active = []  # list of indices into all_segments
+    for i, seg in enumerate(all_segments):
+        # Remove segments from the window that have ended before this one starts
+        active = [j for j in active if all_segments[j].end > seg.start]
 
-            if seg_b.start >= seg_a.end:
-                break
-
-            if seg_a.speaker_name != seg_b.speaker_name:
+        # Check for overlap with any active segment from a different speaker
+        for j in active:
+            seg_a = all_segments[j]
+            if seg_a.speaker_name != seg.speaker_name:
                 seg_a.is_crosstalk = True
-                seg_a.overlap_with = seg_b.speaker_name
-                seg_b.is_crosstalk = True
-                seg_b.overlap_with = seg_a.speaker_name
+                seg_a.overlap_with = seg.speaker_name
+                seg.is_crosstalk = True
+                seg.overlap_with = seg_a.speaker_name
+
+        active.append(i)
 
     return all_segments
 
@@ -125,20 +129,17 @@ def write_txt(
                 current_speaker = None
                 continue
 
-            prefix = ""
-            suffix = ""
-
+            crosstalk_tag = ""
             if seg.is_crosstalk and seg.overlap_with:
-                suffix = f" [CROSSTALK with {seg.overlap_with}]"
+                crosstalk_tag = f" [CROSSTALK with {seg.overlap_with}]"
 
-            if seg.is_uncertain:
-                prefix = "[UNIDENTIFIED] "
+            prefix = "[UNIDENTIFIED] " if seg.is_uncertain else ""
 
             if seg.speaker_name != current_speaker:
-                f.write(f"\n[{ts}] {prefix}{seg.speaker_name}:{suffix}\n")
+                f.write(f"\n[{ts}] {prefix}{seg.speaker_name}:\n")
                 current_speaker = seg.speaker_name
 
-            f.write(f"  {seg.text}{suffix if current_speaker == seg.speaker_name and seg.is_crosstalk else ''}\n")
+            f.write(f"  {seg.text}{crosstalk_tag}\n")
 
     return output_path
 

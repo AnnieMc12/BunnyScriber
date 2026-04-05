@@ -60,9 +60,34 @@ def run_diarization(
     try:
         from pyannote.audio import Pipeline as PyannotePipeline
 
+        # Log in to HuggingFace Hub so the token is cached globally.
+        if auth_token:
+            from huggingface_hub import login
+            login(token=auth_token, add_to_git_credential=False)
+
+        # pyannote 3.x passes the deprecated `use_auth_token` kwarg to
+        # huggingface_hub functions (hf_hub_download, etc.) which was
+        # removed in huggingface_hub >=1.0.  Monkey-patch the key
+        # functions to silently translate use_auth_token → token.
+        import huggingface_hub as _hfh
+
+        def _patch_hf_func(original):
+            """Wrap a huggingface_hub function to accept use_auth_token."""
+            import functools
+
+            @functools.wraps(original)
+            def wrapper(*args, **kwargs):
+                if "use_auth_token" in kwargs:
+                    kwargs.setdefault("token", kwargs.pop("use_auth_token"))
+                return original(*args, **kwargs)
+
+            return wrapper
+
+        _hfh.hf_hub_download = _patch_hf_func(_hfh.hf_hub_download)
+        _hfh.model_info = _patch_hf_func(_hfh.model_info)
+
         pipeline = PyannotePipeline.from_pretrained(
             "pyannote/speaker-diarization-3.1",
-            use_auth_token=auth_token,
         )
 
         diarization = pipeline(
@@ -127,6 +152,7 @@ def separate_chunk(
     chunk_index: int = 0,
     confidence_threshold: float = CONFIDENCE_THRESHOLD,
     auth_token: Optional[str] = None,
+    allow_fallback_diarization: bool = False,
     on_progress=None,
 ) -> SeparationResult:
     """Separate speakers in one audio chunk.
@@ -141,22 +167,45 @@ def separate_chunk(
         chunk_index: Index of this chunk (for file naming).
         confidence_threshold: Below this, segments are flagged uncertain.
         auth_token: HuggingFace auth token for pyannote.
+        allow_fallback_diarization: If True, use low-quality energy-based
+            fallback when pyannote is unavailable. Defaults to False.
         on_progress: Optional callback(message, percent).
 
     Returns:
         SeparationResult with speaker tracks and samples.
+
+    Raises:
+        RuntimeError: If pyannote is unavailable and fallback is not allowed.
     """
     os.makedirs(output_dir, exist_ok=True)
 
     if on_progress:
         on_progress("Running speaker diarization...", 0.1)
 
-    # Try pyannote first, fall back to simple method
     try:
         segments = run_diarization(chunk_path, num_speakers, auth_token)
-    except RuntimeError:
+    except RuntimeError as e:
+        if not allow_fallback_diarization:
+            raise RuntimeError(
+                "pyannote.audio is required for speaker separation but is not available.\n\n"
+                "To install it:\n"
+                "  pip install pyannote.audio\n\n"
+                "You also need a HuggingFace account and must accept the model terms at:\n"
+                "  https://huggingface.co/pyannote/speaker-diarization-3.1\n\n"
+                "Then enter your HuggingFace token in Settings > Transcription > HuggingFace Key.\n\n"
+                f"Original error: {e}"
+            )
         if on_progress:
-            on_progress("pyannote unavailable, using fallback diarization...", 0.1)
+            on_progress(
+                "WARNING: pyannote unavailable, using low-quality fallback diarization. "
+                "Output quality will be poor.",
+                0.1,
+            )
+        import logging
+        logging.warning(
+            "Using fallback energy-based diarization. Speaker attribution "
+            "will be unreliable. Install pyannote.audio for proper results."
+        )
         segments = _simple_energy_diarization(chunk_path, num_speakers)
 
     if on_progress:
@@ -189,11 +238,12 @@ def separate_chunk(
         for seg in speaker_segs:
             track += audio[seg.start_ms:seg.end_ms]
 
-        # Save full track
+        # Save full track as MP3 to keep file sizes under API upload
+        # limits (e.g. Mistral 25MB). WAV at 44.1kHz stereo is ~10MB/min.
         track_path = os.path.join(
-            output_dir, f"chunk{chunk_index:03d}_{label}.wav"
+            output_dir, f"chunk{chunk_index:03d}_{label}.mp3"
         )
-        track.export(track_path, format="wav")
+        track.export(track_path, format="mp3")
         speaker_tracks[label] = track_path
 
         # Save a sample clip for verification
