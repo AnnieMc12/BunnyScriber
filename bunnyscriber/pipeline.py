@@ -18,7 +18,7 @@ from PyQt6.QtCore import QThread
 
 from bunnyscriber.progress import PipelineSignals, ProgressMessage
 from bunnyscriber.config import get_work_dir
-from bunnyscriber.audio_utils import chunk_audio_file, load_audio
+from bunnyscriber.audio_utils import chunk_audio_file, get_duration_ms
 from bunnyscriber.separator import separate_chunk, SeparationResult
 from bunnyscriber.transcriber import (
     transcribe_all_tracks,
@@ -352,8 +352,7 @@ class PipelineWorker(QThread):
         for i, chunk_path in enumerate(chunk_paths):
             chunk_offsets[i] = offset
             try:
-                audio = load_audio(chunk_path)
-                offset += len(audio) / 1000.0
+                offset += get_duration_ms(chunk_path) / 1000.0
             except Exception:
                 pass
 
