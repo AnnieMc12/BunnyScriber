@@ -38,22 +38,28 @@ class MistralTranscriptionBackend(TranscriptionBackend):
         headers = {"Authorization": f"Bearer {self.api_key}"}
 
         with open(audio_path, "rb") as f:
-            files = {"file": f}
+            files = {"file": (audio_path.split("/")[-1].split("\\")[-1], f)}
             data = {
-                "model": "mistral-asr",
+                "model": "voxtral-mini-latest",
                 "language": language,
-                "response_format": "verbose_json",
-                "timestamp_granularities[]": "segment",
+                "timestamp_granularities": "segment",
             }
             resp = requests.post(
                 self.ENDPOINT,
                 headers=headers,
                 files=files,
                 data=data,
-                timeout=300,
+                timeout=600,
             )
 
-        resp.raise_for_status()
+        if resp.status_code != 200:
+            try:
+                detail = resp.json().get("message", resp.text)
+            except Exception:
+                detail = resp.text
+            raise RuntimeError(
+                f"Mistral API error (HTTP {resp.status_code}): {detail}"
+            )
         result = resp.json()
 
         segments = []
